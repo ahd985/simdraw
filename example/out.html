@@ -8286,6 +8286,10 @@ function simdraw_context() {
         this.active_element = null;
     }
 
+    this.delete_element = function(id) {
+
+    }
+
     this.initialize = function() {
         d3.select("#simdraw-container").on("click", context.deactivate_element())
     }
@@ -8373,13 +8377,13 @@ function element(type, id, pos, dims) {
     this.activate = function() {
         var g = d3.select("#" + this.id);
         g.select("#" + this.outline_id).attr("visibility","visible")
-        g.select("#" + this.resizer_id).attr("visibility","visible")
+        g.selectAll("#" + this.resizer_id).each(function() {d3.select(this).attr("visibility","visible")})
     }
 
     this.deactivate = function() {
         var g = d3.select("#" + this.id);
         g.select("#" + this.outline_id).attr("visibility","hidden")
-        g.select("#" + this.resizer_id).attr("visibility","hidden")
+        g.selectAll("#" + this.resizer_id).each(function() {d3.select(this).attr("visibility","hidden")})
     }
 }
 
@@ -8463,7 +8467,7 @@ function circle(type, id) {
 
 function path(type, id) {
     var default_pos = {x:0, y:0};
-    var default_dims = {path:[{x:0, y:0}, {x:50, y:50}], "max_x":50, "max_y":50, margin:5};
+    var default_dims = {path:[{x:0, y:0}, {x:50, y:50}, {x:0, y:50}], "x-range":[0,50], "y-range":[0,50], margin:5};
     var path = new element(type, id, default_pos, default_dims);
 
     path.line_function = d3.svg.line()
@@ -8472,19 +8476,30 @@ function path(type, id) {
         .interpolate("linear");
 
     path.set_element = function(element) {
-        element.attr("d", function(d) {return path.line_function(d.path)})
+        element.attr("d", function(d) {return path.line_function(d.path) + "Z"})
     }
 
     path.set_outline = function(outline) {
-        outline.attr("height", function(d) {return d.max_y + 2*d.margin})
-            .attr("width", function(d) {return d.max_x + 2*d.margin})
-            .attr("x", function(d) {-d.margin})
-            .attr("y", function(d) {-d.margin})
+        outline.attr("height", function(d) {return d["y-range"][1] - d["y-range"][0] + 2*d.margin})
+            .attr("width", function(d) {return d["x-range"][1] - d["x-range"][0] + 2*d.margin})
+            .attr("x", function(d) {return d["x-range"][0] - d.margin})
+            .attr("y", function(d) {return d["y-range"][0] - d.margin})
     }
 
     path.set_resizer = function(resizer) {
-        resizer.attr("cx", function(d) {return d.max_x + 2*d.margin})
-            .attr("cy", function(d) {return d.max_y + 2*d.margin})
+        parent = d3.select(resizer.node().parentNode);
+        parent.selectAll("#" + this.resizer_id)
+            .data(parent.datum().path)
+            .attr("cx", function(d) {return d.x})
+            .attr("cy", function(d) {return d.y})
+            .enter()
+            .append(this.resizer_type)
+            .attr("cx", function(d) {return d.x})
+            .attr("cy", function(d) {return d.y})
+            .attr("id", this.resizer_id)
+            .attr(this.resizer_attr)
+            .style(this.resizer_style)
+            .call(this.drag_resize)
     }
 
     path.drag_move = d3.behavior.drag()
@@ -8494,11 +8509,14 @@ function path(type, id) {
         });
 
     path.drag_resize = d3.behavior.drag()
-        .on("drag", function(d) {
-            var datum = d3.select("#" + this.parentNode.id).datum();
+        .on("drag", function(d,i) {
+            var d_path = d3.select("#" + this.parentNode.id).datum().path;
+            d_path[i].x = d3.event.x
+            d_path[i].y = d3.event.y
             context.get_element(this.parentNode.id)
-                .render({"max_x":d3.max(), "max_y":d3.max(1,d3.event.y - 2*datum.margin),
-                    margin:datum.margin})
+                .render({path:d_path,
+                         "x-range":[d3.min(d_path, function(d) {return d.x}), d3.max(d_path, function(d) {return d.x})],
+                         "y-range":[d3.min(d_path, function(d) {return d.y}), d3.max(d_path, function(d) {return d.y})]})
         });
 
     path.initialize();
